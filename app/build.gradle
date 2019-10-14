@@ -1,15 +1,15 @@
 apply plugin: 'com.android.application'
 
 android {
-    compileSdkVersion 21
+    compileSdkVersion 27
     buildToolsVersion "21.1.0"
 
     defaultConfig {
         applicationId "pro.npofsi.wrap.eumidi"
-        minSdkVersion 14
-        targetSdkVersion 21
-        versionCode 1
-        versionName "1.0"
+        minSdkVersion 21
+        targetSdkVersion 28
+        versionCode 2
+        versionName "1.1"
     }
     buildTypes {
         release {
@@ -20,5 +20,8 @@ android {
 }
 
 dependencies {
+	implementation 'com.yanzhenjie:andserver:+'
+	//implementation 'org.nanohttpd:nanohttpd:+'
+	implementation 'com.google.code.gson:gson:2.8.5'
     compile fileTree(dir: 'libs', include: ['*.jar'])
 }
