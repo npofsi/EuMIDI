@@ -16,28 +16,12 @@ import android.net.*;
 import org.json.*;
 import java.io.*;
 import android.*;
+import android.graphics.Color;
 
 
 public class MainActivity extends Activity 
 {
-		//读写权限
-		private static String[] PERMISSIONS_STORAGE = {
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE};
-		//请求状态码
-		private static int REQUEST_PERMISSION_CODE = 1;
-
 		
-		@Override
-		public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-			super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-			if (requestCode == REQUEST_PERMISSION_CODE) {
-				for (int i = 0; i < permissions.length; i++) {
-					//Log.i("MainActivity", "申请的权限为：" + permissions[i] + ",申请结果：" + grantResults[i]);
-				}
-			}
-		}
-	
 	final int REQUEST_CHOOSEFILE=10;
 	WebView webview;
 	TextView textview;
@@ -47,6 +31,8 @@ public class MainActivity extends Activity
 	FileX rootfx;
 	TracksUtils tu=null;
 	String path;
+    ProgressDialog pds;
+    Activity ctx=this;
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
@@ -56,11 +42,7 @@ public class MainActivity extends Activity
         setContentView(R.layout.main);
 		
 		
-		if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
-			if (this.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-				this.requestPermissions(PERMISSIONS_STORAGE, REQUEST_PERMISSION_CODE);
-			}
-		}
+		
 		
 		framelayout=findViewById(R.id.mainFrameLayout);
 		textview = findViewById(R.id.debugTextView);
@@ -76,18 +58,65 @@ public class MainActivity extends Activity
 		}
 		catch (JSONException e)
 		{}
-		try
-		{
-			if(!rootfx.forward("euphony").forward("index.html").check())ZipUtils.UnZipAssetsFolder(this, "euphony/euphony.zip", rootfx.forward("euphony").getAbsolutePath());
-			if(!rootfx.forward("euphony").forward("tracks").forward("index.json").check())ZipUtils.UnZipAssetsFolder(this,"tracks/tracks.zip",rootfx.forward("euphony").forward("tracks").getAbsolutePath());
-			if(!rootfx.forward("euphony").forward("about").forward("about.html").check())ZipUtils.UnZipAssetsFolder(this,"about/about.zip",rootfx.forward("euphony").forward("about").getAbsolutePath());
-			webview.loadUrl("http://localhost:30100/index.html");
-		}
-		catch (Exception e)
-		{
-			textview.setText(e.toString());
-			framelayout.removeView(webview);
-		}
+        Runnable rab= new Runnable(){
+            public void run(){
+            try{
+			        if(!rootfx.forward("euphony").forward("index.html").check())ZipUtils.UnZipAssetsFolder(ctx, "euphony/euphony.zip", rootfx.forward("euphony").getAbsolutePath());
+			        if(!rootfx.forward("euphony").forward("tracks").forward("index.json").check())ZipUtils.UnZipAssetsFolder(ctx,"tracks/tracks.zip",rootfx.forward("euphony").forward("tracks").getAbsolutePath());
+			        if(!rootfx.forward("euphony").forward("about").forward("about.html").check())ZipUtils.UnZipAssetsFolder(ctx,"about/about.zip",rootfx.forward("euphony").forward("about").getAbsolutePath());
+			        
+		        }catch (Exception e){
+					final String rs=e.getMessage();
+			        ctx.runOnUiThread(new Runnable(){
+
+							@Override
+							public void run() {
+								textview.setText(rs);
+								textview.setTextColor(Color.RED);
+								framelayout.removeView(webview);
+								//if(pds!=null)pds.dismiss();
+								
+							}
+						});
+					
+		        }finally{
+					ctx.runOnUiThread(new Runnable(){
+
+							@Override
+							public void run() {
+								//if(pds!=null)pds.dismiss();
+								webview.loadUrl("http://localhost:30100/index.html");
+							}
+						});
+				}
+                
+            }
+        };
+        Thread th=new Thread(rab);
+        //pds=new ProgressDialog(MainActivity.this);
+		//pds.setCancelable(false);
+		//pds.setMessage("Loading");
+       // pds.show();
+        
+        th.start();
+        refresh();
+        
+//		new Handler().postDelayed(new Runnable(){
+//
+//				@Override
+//				public void run() {
+//					ctx.runOnUiThread(new Runnable(){
+//
+//							@Override
+//							public void run() {
+//								refresh();
+//								pds.dismiss();
+//							}
+//							
+//						
+//					});
+//				}
+//		},3500);
     }
 
 	@Override
@@ -156,34 +185,67 @@ public class MainActivity extends Activity
 		
 	}
 	
-	
+	ProgressDialog pd;
 @Override
 protected void onActivityResult(int requestCode,int resultCode,Intent data){//选择文件返回
         super.onActivityResult(requestCode,resultCode,data);
         if(resultCode==RESULT_OK){
         switch(requestCode){
             case REQUEST_CHOOSEFILE:
-            Uri uri=data.getData();
+            final Uri uri=data.getData();
             server.startup();
-			String chooseFilePath=FileChooseUtil.getInstance(this).getChooseFileResultPath(uri);
-		//chooseFilePath.split(FileX.separator)
-				try
-				{
-					refresh();
-					tu.addTrack(new FileX(chooseFilePath).getName(), new FileX(chooseFilePath).read());
-				}
-				catch (Exception e)
-				{
-					new AlertDialog.Builder(this).setMessage("Error:"+e.toString()).setPositiveButton("confirm",null).create().show();
-				}
-				finally{
-					new AlertDialog.Builder(this).setMessage("Added:"+new FileX(chooseFilePath).getName()).setPositiveButton("confirm",null).create().show();
-				}
+			 pd=new ProgressDialog(MainActivity.this);
+				pd.setMessage("Loading...");
+				pd.setIndeterminate(true);
+				pd.setCancelable(false);
+				pd.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+			    pd.show();
+				
+					Runnable rab=new Runnable(){
+						@Override
+						public void run(){
+							int ok=1;
+							String es="";
+						    try{
+							
+					            FileX f=new FileX(ctx.getFilesDir().getAbsolutePath()).forwardACNF("cache");
+				            	f.copyFromInputStream(getContentResolver().openInputStream(uri));
+					            tu.addTrack(EasyUtils.getFileName(uri,ctx),f.read());
+						    }catch (Exception e){
+							    ok=0;
+							    es=e.getMessage();
+				            }finally{
+							    
+						    }
+							final String ess=es;
+							final int result=ok;
+						    ctx.runOnUiThread(new Runnable(){
+
+								@Override
+								public void run() {
+									if(pd!=null)pd.dismiss();
+									if(result==0)new AlertDialog.Builder(ctx).setMessage("Failed:"+ess).setPositiveButton("confirm",null).create().show();
+									if(result==1)new AlertDialog.Builder(ctx).setMessage("Succeeded:"+EasyUtils.getFileName(uri,ctx)+"\nIf you can't find it, please refresh the page.").setPositiveButton("confirm",null).create().show();
+									webview.loadUrl("http://localhost:30100/index.html#1");
+									
+									server.startup();
+								
+									startServer(path);
+									//webview.clearView();
+									refresh();
+								}
+								
+								
+							});
+					    }
+					};
+
+					new Thread(rab).start();
+				
 			//refresh();
-			//server.startup();
-			//webview.loadUrl("http://localhost:30100/index.html#1");
+			server.startup();
+			webview.loadUrl("http://localhost:30100/index.html#1");
 			startServer(path);
-			webview.reload();
 				//Log.d(TAG,"选择文件返回："+chooseFilePath);
 			//sendFileMessage(chooseFilePath);
             break;
@@ -221,8 +283,7 @@ protected void onActivityResult(int requestCode,int resultCode,Intent data){//�
 		webview.setScrollBarSize(0);
 
 		webview.setFocusable(true);
-		webview.setFocusedByDefault(true);
-		webview.setFocusableInTouchMode(true);
+		//webview.setFocusableInTouchMode(true);
 		
 	}
 	

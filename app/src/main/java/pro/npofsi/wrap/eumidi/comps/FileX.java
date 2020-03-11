@@ -1,9 +1,12 @@
 package pro.npofsi.wrap.eumidi.comps;
 import java.io.*;
-import android.util.*;
+
+import java.util.*;
+import android.util.Log;
 
 public class FileX extends File
 {
+    public static final String TAG = FileX.class.getSimpleName();
 	public FileX(String path){
 		super(path);
 	}
@@ -90,12 +93,15 @@ public class FileX extends File
 		FileX f=this.forward(childName);
 		try
 		{
-			if(!f.exists())this.createNewFile();
+			if(!f.exists()){
+				f.getParentFile().mkdirs();
+			    f.createNewFile();
+			}
 		}
 		catch (IOException e)
-		{ 
-			Log.e("CreateNewFile","i",e);
-		}
+		{
+            Log.e(TAG,e.getMessage(),e);
+        }
 		return f;
 	}
 	
@@ -211,21 +217,117 @@ public class FileX extends File
 		return i==0?true:false;
 	}
 	
-	public FileInputStream getFileInputStream() throws FileNotFoundException{
+	public FileInputStream fileInputStream=null;
+	public FileOutputStream fileOutputStream=null;
+	public FileInputStream getFileInputStream() throws FileNotFoundException, IOException{
 		return new FileInputStream(this);
 	}
 	
-	public FileOutputStream getFileOutputStream() throws FileNotFoundException{
+	public FileOutputStream getFileOutputStream() throws FileNotFoundException, IOException{
 		return new FileOutputStream(this);
+		
 	}
 	
 	public byte[] read() throws IOException{
 		byte[] buffer = new byte[(int)this.length()];
-		this.getFileInputStream().read(buffer);
+		FileInputStream ist=this.getFileInputStream();
+		ist.read(buffer);
+		ist.close();
 		return buffer;
 	}
 	
 	public void write(byte[] buffer) throws IOException{
-		this.getFileOutputStream().write(buffer);
+		FileOutputStream ost=this.getFileOutputStream();
+		ost.write(buffer);
+		ost.close();
+		
 	}
+	
+	public void copyTo(FileX f) throws IOException{
+		if(f.isFile()){
+            f.write(this.read());
+        }else if(f.isDirectory()){
+            FileX[] lf=f.listFileXs();
+            for(FileX sf:lf){
+                if(sf.isFile()){
+                    sf.copyTo(f.forwardACNF(sf.getName()));
+                }else if(sf.isDirectory()){
+                    sf.copyTo(f.forwardAMKD(sf.getName()));
+                }
+            }
+        }
+		
+	}
+	
+	public void copyFromInputStream(InputStream ist) throws IOException{
+		//InputStream(ist).;
+		byte[] b=new byte[4096];
+		ByteArrayOutputStream bos=new ByteArrayOutputStream();
+		while((ist.read(b))!=-1){
+			bos.write(b);
+		}
+		bos.writeTo(this.getFileOutputStream());
+		
+		
+	}
+	
+	public String getExtension(){
+		String[] strn=this.getName().split(".");
+		return strn.length>=1?strn[strn.length-1]:"";
+	}
+	
+	
+	public static class TempX extends FileX{	
+		public static Stack<TempX> tempstack=new Stack<TempX>();
+        FileX mTempDir;
+		public static void removeAll(){
+			for(Iterator<TempX> i=tempstack.iterator();i.hasNext();i.next().remove()){}
+		}
+		public TempX(FileX tempDir){
+            super(tempDir.getAbsolutePath());
+            mTempDir=tempDir;
+			tempstack.add(this);
+		}
+        
+        public FileX tempDir(){
+            return mTempDir.forwardAMKD("tempxd_"+System.currentTimeMillis()+"_"+(int)(Math.random()*1000));
+        }
+        
+        public FileX tempFile(){
+            return mTempDir.forwardACNF("tempxf_"+System.currentTimeMillis()+"_"+(int)(Math.random()*1000));
+        }
+        
+		public void remove(){
+			this.deleteX();
+		}
+	}
+    
+    public FileX.Editor getEditor(){
+        return new Editor(this);
+    }
+    public static class Editor{
+        FileX f;
+        public Editor(FileX file){
+            f=file;
+        }
+        public String readString() throws IOException{
+            if(f.isFile()){
+                return new String(f.read());
+            }
+            return null;
+        }
+        public void writeString(String str) throws IOException{
+            f.write(str.getBytes());
+        }
+        public String[] readCSV() throws IOException{
+            return readString().split(",");
+        }
+        public void writeCSV(String[] strs) throws IOException{
+            String str="";
+            for (String buf:strs) {
+                if(buf!="")str+=","+buf;
+            }
+            writeString(str.substring(1));
+        }
+    }
 }
